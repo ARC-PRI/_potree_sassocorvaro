@@ -41,7 +41,7 @@
     import * as THREE from "./libs/three.js/build/three.module.js";
 
     // =====================
-    // LABELS (names shown in Scene / Objects)
+    // LABELS
     // =====================
     const SASSO_LABEL = "Rocca Ubaldinesca";
     const BUSTO_LABEL = "Busto di Francesco di Giorgio Martini";
@@ -51,19 +51,13 @@
     // =====================
     window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
 
-    // EDL: keep OFF by default (user can toggle via GUI checkbox)
     viewer.setEDLEnabled(false);
-
     viewer.setFOV(60);
     viewer.setPointBudget(10_000_000);
     viewer.loadSettingsFromURL();
-
-    // loadSettingsFromURL may re-enable EDL via URL params -> force OFF again
     viewer.setEDLEnabled(false);
-
     viewer.setDescription("ROCCA UBALDINESCA");
 
-    // Throttle streaming during navigation (if supported by this Potree build)
     if (typeof viewer.setMaxNodesLoading === "function") {
       viewer.setMaxNodesLoading(2);
     } else if (viewer.maxNodesLoading !== undefined) {
@@ -72,15 +66,12 @@
       Potree.maxNodesLoading = 2;
     }
 
-    // Min node size: set to 0
     if (typeof viewer.setMinNodeSize === "function") {
       viewer.setMinNodeSize(0);
     }
 
-    // GUI
     viewer.loadGUI(() => {
       $("#menu_appearance").next().show();
-      // GUI may restore settings -> keep EDL OFF by default
       viewer.setEDLEnabled(false);
     });
 
@@ -103,30 +94,25 @@
     };
 
     // =====================
-    // DEFAULT MATERIAL SETTINGS (used to restore)
+    // DEFAULT MATERIAL SETTINGS
     // =====================
     const DEFAULTS = {
       rocca: { size: 2.0, minSize: 2.0, type: Potree.PointSizeType.FIXED },
       busto: { size: 2.0, minSize: 2.0, type: Potree.PointSizeType.FIXED }
     };
 
-    // =====================
-    // MATERIAL DEFAULTS (keeps native Potree UI options)
-    // =====================
     function applyMaterialDefaults(pc, materialsArr){
       const mat = pc.material;
-
       mat.activeAttributeName = "rgba";
       mat.size = DEFAULTS.rocca.size;
       mat.minSize = DEFAULTS.rocca.minSize;
       mat.pointSizeType = DEFAULTS.rocca.type;
-
       materialsArr.push(mat);
       return mat;
     }
 
     // =====================
-    // TWO SEPARATE POINT-SIZE SLIDERS (one per cloud)
+    // UI: TWO SEPARATE POINT-SIZE SLIDERS
     // =====================
     function addPointSizeSliderForGroup(opts){
       const { id, title, materialsRef, initialMaterial } = opts;
@@ -137,7 +123,6 @@
         return;
       }
 
-      // remove only our custom block (do NOT touch native Potree controls)
       $(`#${id}`).remove();
 
       const typeToValue = t =>
@@ -232,6 +217,11 @@
     }
 
     // =====================
+    // SPECIAL VIEW STATE (DECLARE EARLY)
+    // =====================
+    let specialViewActive = false;
+
+    // =====================
     // INITIAL FIT
     // =====================
     let bustoLoaded = false;
@@ -255,7 +245,7 @@
     }
 
     // =====================
-    // DYNAMIC QUALITY WHILE NAVIGATING (DO NOT touch EDL here)
+    // DYNAMIC QUALITY WHILE NAVIGATING
     // =====================
     const QUALITY = {
       moving: { pointBudget: 2_500_000 },
@@ -284,7 +274,6 @@
       e => {
         const pc = e.pointcloud;
 
-        // busto defaults (same as rocca defaults right now, but kept separate)
         const mat = pc.material;
         mat.activeAttributeName = "rgba";
         mat.size = DEFAULTS.busto.size;
@@ -362,15 +351,12 @@
     // ANNOTATION + VIEW-DEPENDENT SETTINGS
     // =====================
 
-    // Saved camera view (UPDATED with your values)
-    const SAVED_POS = new THREE.Vector3(298466.300, 4850599.934, 331.354);
-    const SAVED_TGT = new THREE.Vector3(298465.887, 4850599.271, 331.059);
+    // Your saved camera view (arrays, like Potree examples)
+    const SAVED_POS_ARR = [298466.300, 4850599.934, 331.354];
+    const SAVED_TGT_ARR = [298465.887, 4850599.271, 331.059];
 
-    // Threshold to restore defaults
+    // Distance threshold to restore defaults
     const RESTORE_DISTANCE_M = 5.0;
-
-    // Track whether "special view settings" are currently applied
-    let specialViewActive = false;
 
     function setRoccaSpecial(){
       SASSOCORVARO.materials.forEach(m => {
@@ -379,7 +365,6 @@
         m.pointSizeType = Potree.PointSizeType.FIXED;
       });
 
-      // sync UI (if present)
       try {
         $("#ap_pointsize_sassocorvaro_slider").slider("value", 10.0);
         $("#ap_pointsize_sassocorvaro_val").text("10.0");
@@ -394,7 +379,6 @@
         m.pointSizeType = Potree.PointSizeType.ADAPTIVE;
       });
 
-      // sync UI (if present)
       try {
         $("#ap_pointsize_busto_slider").slider("value", 0.7);
         $("#ap_pointsize_busto_val").text("0.7");
@@ -415,7 +399,6 @@
         m.pointSizeType = DEFAULTS.busto.type;
       });
 
-      // sync UI (if present)
       try {
         $("#ap_pointsize_sassocorvaro_slider").slider("value", DEFAULTS.rocca.size);
         $("#ap_pointsize_sassocorvaro_val").text(DEFAULTS.rocca.size.toFixed(1));
@@ -428,12 +411,12 @@
     }
 
     function goToSavedView(){
-      // IMPORTANT: prevent late fitToScreen() calls from overwriting the user-selected view
+      // stop any future auto-fit overwriting the user-selected view
       fitQuickDone = true;
       fitFinalDone = true;
 
-      viewer.scene.view.position.copy(SAVED_POS);
-      viewer.scene.view.lookAt(SAVED_TGT);
+      // Use Potree's native method (robust: updates pivot + controls correctly)
+      viewer.scene.view.setView(SAVED_POS_ARR, SAVED_TGT_ARR);
 
       setRoccaSpecial();
       setBustoSpecial();
@@ -442,10 +425,12 @@
       viewer.render();
     }
 
-    // Clickable annotation
+    // Annotation: include cameraPosition/cameraTarget like in the reference example
     const ann = new Potree.Annotation({
       title: BUSTO_LABEL,
-      position: SAVED_TGT.clone(),
+      position: SAVED_TGT_ARR,
+      cameraPosition: SAVED_POS_ARR,
+      cameraTarget: SAVED_TGT_ARR,
       description: `
         <div style="line-height:1.35">
           <b>${BUSTO_LABEL}</b><br/>
@@ -454,20 +439,22 @@
       `
     });
 
+    // Add to annotation root (robust across builds)
     viewer.scene.annotations.add(ann);
 
-    // Robust handlers across Potree builds
+    // Optional: force the view also via handler (some builds handle click internally, but we keep it deterministic)
     ann.addEventListener("select", () => goToSavedView());
     ann.addEventListener("click",  () => goToSavedView());
     ann.onClick = () => goToSavedView();
 
-    // Monitor distance from saved target; if user moves away > 5m, restore defaults
-    // (lightweight polling, no impact on rendering)
+    // Restore defaults if user moves away from saved target > 5m
+    const SAVED_TGT_VEC = new THREE.Vector3(...SAVED_TGT_ARR);
+
     setInterval(() => {
       if (!specialViewActive) return;
 
       const camPos = viewer.scene.view.position;
-      const d = camPos.distanceTo(SAVED_TGT);
+      const d = camPos.distanceTo(SAVED_TGT_VEC);
 
       if (d > RESTORE_DISTANCE_M) {
         restoreDefaults();
@@ -494,4 +481,3 @@
 
 </body>
 </html>
-
